@@ -18,7 +18,7 @@ sinfo(struct sysinfo *info) {
 int
 countfree()
 {
-  uint64 sz0 = (uint64)sbrk(0);
+  uint64 sz0 = (uint64)sbrk(0); // 获取当前程序的堆内存的起始地址，保存到sz0
   struct sysinfo info;
   int n = 0;
 
@@ -104,6 +104,7 @@ void testproc() {
     printf("sysinfotest: fork failed\n");
     exit(1);
   }
+  
   if(pid == 0){
     sinfo(&info);
     if(info.nproc != nproc+1) {
