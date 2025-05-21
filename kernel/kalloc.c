@@ -34,7 +34,7 @@ void
 freerange(void *pa_start, void *pa_end)
 {
   char *p;
-  p = (char*)PGROUNDUP((uint64)pa_start);
+  p = (char*)PGROUNDUP((uint64)pa_start); // 讲链表的内存对齐
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
     kfree(p);
 }
@@ -79,4 +79,19 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+void
+my_freebytes(uint64* dst)
+{
+  *dst = 0;
+  struct run *p = kmem.freelist;
+
+  acquire(&kmem.lock);
+  while(p)
+  {
+    *dst += PGSIZE;
+    p = p->next;
+  }
+  release(&kmem.lock);
 }

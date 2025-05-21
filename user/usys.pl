@@ -36,3 +36,5 @@ entry("getpid");
 entry("sbrk");
 entry("sleep");
 entry("uptime");
+entry("trace"); # 写入脚本函数，实现trace的汇编连接
+entry("sysinfo");

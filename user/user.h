@@ -1,5 +1,6 @@
 struct stat;
 struct rtcdate;
+struct sysinfo;
 
 // system calls
 int fork(void);
@@ -23,6 +24,8 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int trace(int); // 写入用户态接口
+int sysinfo(struct sysinfo*); // 写入系统跟踪的用户态接口
 
 // ulib.c
 int stat(const char*, struct stat*);

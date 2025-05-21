@@ -203,7 +203,7 @@ uvmcreate()
   pagetable = (pagetable_t) kalloc();
   if(pagetable == 0)
     return 0;
-  memset(pagetable, 0, PGSIZE);
+  memset(pagetable, 0, PGSIZE); // 将分配的内存测试
   return pagetable;
 }
 

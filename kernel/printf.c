@@ -17,7 +17,7 @@
 
 volatile int panicked = 0;
 
-// lock to avoid interleaving concurrent printf's.
+// 锁定，以避免交错执行并发的 printf 命令.
 static struct {
   struct spinlock lock;
   int locking;

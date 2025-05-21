@@ -1,5 +1,5 @@
 #include "types.h"
-#include "param.h"
+#include "param.h" // 设置相关的宏定义
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
@@ -8,9 +8,9 @@
 
 struct cpu cpus[NCPU];
 
-struct proc proc[NPROC];
+struct proc proc[NPROC]; 
 
-struct proc *initproc;
+struct proc *initproc; 
 
 int nextpid = 1;
 struct spinlock pid_lock;
@@ -21,7 +21,7 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
-// initialize the proc table at boot time.
+// 在启动时初始化进程表。.
 void
 procinit(void)
 {
@@ -30,18 +30,17 @@ procinit(void)
   initlock(&pid_lock, "nextpid");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-
-      // Allocate a page for the process's kernel stack.
-      // Map it high in memory, followed by an invalid
-      // guard page.
+      // 为进程的内核堆栈分配一个页面。
+      // 将其映射到内存的高位，然后是一个无效的
+      // 保护页面。
       char *pa = kalloc();
       if(pa == 0)
         panic("kalloc");
       uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W); // 实现的 是虚拟地址的映射
       p->kstack = va;
   }
-  kvminithart();
+  kvminithart(); // 设置硬件线程的内核虚拟地址
 }
 
 // Must be called with interrupts disabled,
@@ -61,17 +60,18 @@ mycpu(void) {
   int id = cpuid();
   struct cpu *c = &cpus[id];
   return c;
-}
+}// 返回cpu的指针
+
 
 // Return the current struct proc *, or zero if none.
-struct proc*
+struct proc* // 在C语言中没设置typename别名的struct，都需要显式的使用struct
 myproc(void) {
-  push_off();
+  push_off(); // 禁用中断
   struct cpu *c = mycpu();
   struct proc *p = c->proc;
   pop_off();
   return p;
-}
+}// 返回当前cpu运行的进程的指针
 
 int
 allocpid() {
@@ -81,7 +81,6 @@ allocpid() {
   pid = nextpid;
   nextpid = nextpid + 1;
   release(&pid_lock);
-
   return pid;
 }
 
@@ -92,13 +91,14 @@ allocpid() {
 static struct proc*
 allocproc(void)
 {
-  struct proc *p;
+  struct proc *p; // 分配进程
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if(p->state == UNUSED) {
       goto found;
-    } else {
+    }
+    else {
       release(&p->lock);
     }
   }
@@ -113,19 +113,20 @@ found:
     return 0;
   }
 
-  // An empty user page table.
+  // An empty user page table. 分配用户页表
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
-    freeproc(p);
+    freeproc(p); // 释放PID，释放trapframe，修改proc的state
     release(&p->lock);
     return 0;
   }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
-  memset(&p->context, 0, sizeof(p->context));
-  p->context.ra = (uint64)forkret;
+  memset(&p->context, 0, sizeof(p->context)); // 这样的context的大小的定义是符合context结构体的大小，并且结构体内部进行内存对齐
+  p->context.ra = (uint64)forkret; // 将函数的地址赋值给ra，执行的时候会跳转到forkret，然后执行
   p->context.sp = p->kstack + PGSIZE;
+  p->syscall_trace = 0; // 默认的系统跟踪的数值是；
 
   return p;
 }
@@ -152,8 +153,7 @@ freeproc(struct proc *p)
   p->state = UNUSED;
 }
 
-// Create a user page table for a given process,
-// with no user memory, but with trampoline pages.
+// Create a user page table for a given process, with no user memory, but with trampoline pages.
 pagetable_t
 proc_pagetable(struct proc *p)
 {
@@ -168,6 +168,7 @@ proc_pagetable(struct proc *p)
   // at the highest user virtual address.
   // only the supervisor uses it, on the way
   // to/from user space, so not PTE_U.
+  // 创建映射
   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
               (uint64)trampoline, PTE_R | PTE_X) < 0){
     uvmfree(pagetable, 0);
@@ -175,6 +176,7 @@ proc_pagetable(struct proc *p)
   }
 
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
+  // 映射trapframe
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
@@ -197,6 +199,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 
 // a user program that calls exec("/init")
 // od -t xC initcode
+// 启动用户的初始化，每个字节都是机器指令
 uchar initcode[] = {
   0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02,
   0x97, 0x05, 0x00, 0x00, 0x93, 0x85, 0x35, 0x02,
@@ -207,7 +210,7 @@ uchar initcode[] = {
   0x00, 0x00, 0x00, 0x00
 };
 
-// Set up first user process.
+// Set up first user process.设置第一个用户进程
 void
 userinit(void)
 {
@@ -225,16 +228,16 @@ userinit(void)
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
 
-  safestrcpy(p->name, "initcode", sizeof(p->name));
-  p->cwd = namei("/");
+  safestrcpy(p->name, "initcode", sizeof(p->name)); // 用户的初始运行的1号进程
+  p->cwd = namei("/");  // 当前目录是根
 
   p->state = RUNNABLE;
 
   release(&p->lock);
 }
 
-// Grow or shrink user memory by n bytes.
-// Return 0 on success, -1 on failure.
+// 将用户内存增加或减少 n 个字节。
+// 成功时返回 0，失败时返回-1。
 int
 growproc(int n)
 {
@@ -251,7 +254,7 @@ growproc(int n)
   }
   p->sz = sz;
   return 0;
-}
+}// 动态的调整当前的进程的内存的大小
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
@@ -262,12 +265,12 @@ fork(void)
   struct proc *np;
   struct proc *p = myproc();
 
-  // Allocate process.
-  if((np = allocproc()) == 0){
+  // Allocate process.分配进程
+  if((np = allocproc()) == 0){ // 在allocproc中，成功返回之后也是加锁的，后续需要手动释放锁
     return -1;
   }
 
-  // Copy user memory from parent to child.
+  // Copy user memory from parent to child.将父进程的页表copy到子进程的页表
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
@@ -277,19 +280,21 @@ fork(void)
 
   np->parent = p;
 
-  // copy saved user registers.
+  // copy saved user registers. 子进程的陷阱帧 复制 父进程的陷阱帧，p->trapframe是指针，如果不解引用的话，那么就是将子进程的指针指给父进程的陷阱帧了
   *(np->trapframe) = *(p->trapframe);
 
   // Cause fork to return 0 in the child.
-  np->trapframe->a0 = 0;
+  np->trapframe->a0 = 0; 
 
   // increment reference counts on open file descriptors.
-  for(i = 0; i < NOFILE; i++)
+  for(i = 0; i < NOFILE; i++) // 进程最多可以打开的文件数目
     if(p->ofile[i])
-      np->ofile[i] = filedup(p->ofile[i]);
-  np->cwd = idup(p->cwd);
+      np->ofile[i] = filedup(p->ofile[i]); // 如果父进程打开的文件是有效的，那么需要计数器++，增加链接数
+  np->cwd = idup(p->cwd);// 当前目录的引用数++
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+
+  np->syscall_trace = p->syscall_trace; // 将系统跟踪的指针耶copy到子进程当中
 
   pid = np->pid;
 
@@ -301,7 +306,7 @@ fork(void)
 }
 
 // Pass p's abandoned children to init.
-// Caller must hold p->lock.
+// Caller must hold p->lock. 孤儿进程的分配策略
 void
 reparent(struct proc *p)
 {
@@ -329,7 +334,7 @@ reparent(struct proc *p)
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
-void
+void // 子进程退出之后的，僵尸进程的来源
 exit(int status)
 {
   struct proc *p = myproc();
@@ -380,15 +385,15 @@ exit(int status)
   reparent(p);
 
   // Parent might be sleeping in wait().
-  wakeup1(original_parent);
+  wakeup1(original_parent); // 唤醒进程，将进程的状态修改为runnable
 
   p->xstate = status;
-  p->state = ZOMBIE;
+  p->state = ZOMBIE; // 僵尸！！！！！！！！！！！！！！
 
   release(&original_parent->lock);
 
   // Jump into the scheduler, never to return.
-  sched();
+  sched(); // 当前的进程切换到调度器，不会返回当前的位置，调度器会将p的lock处理
   panic("zombie exit");
 }
 
@@ -403,7 +408,8 @@ wait(uint64 addr)
 
   // hold p->lock for the whole time to avoid lost
   // wakeups from a child's exit().
-  acquire(&p->lock);
+  // 锁的占有并等待
+  acquire(&p->lock); 
 
   for(;;){
     // Scan through table looking for exited children.
@@ -513,7 +519,7 @@ sched(void)
     panic("sched interruptible");
 
   intena = mycpu()->intena;
-  swtch(&p->context, &mycpu()->context);
+  swtch(&p->context, &mycpu()->context); // 上下文切换，从当前的进程切换到cpu的上下文，实现调度
   mycpu()->intena = intena;
 }
 
@@ -691,5 +697,17 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+  }
+}
+
+void
+my_procnum(uint64 *dst)
+{
+  *dst = 0;
+  struct proc* p;
+  for(p = proc;p<&proc[NPROC];p++)
+  {
+    if(p->state != UNUSED)
+      (*dst)++;
   }
 }

@@ -21,7 +21,7 @@ initlock(struct spinlock *lk, char *name)
 void
 acquire(struct spinlock *lk)
 {
-  push_off(); // disable interrupts to avoid deadlock.
+  push_off(); // 禁用中断防止发生死锁.
   if(holding(lk))
     panic("acquire");
 
@@ -88,11 +88,11 @@ holding(struct spinlock *lk)
 void
 push_off(void)
 {
-  int old = intr_get();
+  int old = intr_get(); // 获取当前的中断的状态（启用or禁用）,保存到old
 
-  intr_off();
-  if(mycpu()->noff == 0)
-    mycpu()->intena = old;
+  intr_off(); // 禁用中断
+  if(mycpu()->noff == 0) 
+    mycpu()->intena = old; // 将原本的状态
   mycpu()->noff += 1;
 }
 
@@ -106,5 +106,5 @@ pop_off(void)
     panic("pop_off");
   c->noff -= 1;
   if(c->noff == 0 && c->intena)
-    intr_on();
+    intr_on(); // 恢复中断
 }
