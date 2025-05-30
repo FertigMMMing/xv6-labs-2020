@@ -341,7 +341,7 @@ sfence_vma()
 
 // extract the three 9-bit page table indices from a virtual address.
 #define PXMASK          0x1FF // 9 bits
-#define PXSHIFT(level)  (PGSHIFT+(9*(level)))
+#define PXSHIFT(level)  (PGSHIFT+(9*(level)))  // 偏移量，选择上9还是中9
 #define PX(level, va) ((((uint64) (va)) >> PXSHIFT(level)) & PXMASK)
 
 // one beyond the highest possible virtual address.

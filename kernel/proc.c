@@ -22,6 +22,7 @@ static void freeproc(struct proc *p);
 extern char trampoline[]; // trampoline.S
 
 // initialize the proc table at boot time.
+// 在启动阶段进行进程的初始化
 void
 procinit(void)
 {
@@ -30,16 +31,16 @@ procinit(void)
   initlock(&pid_lock, "nextpid");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      
+      // char *pa = kalloc(); // 分配物理地址
+      // if(pa == 0)
+      //   panic("kalloc");
+      // uint64 va = KSTACK((int) (p - proc));
+      // uvmmap(p->kernelPagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      // p->kstack = va;
   }
   kvminithart();
 }
@@ -121,6 +122,21 @@ found:
     return 0;
   }
 
+  p->kernelPagetable = proc_kpt_init();
+  if(p->kernelPagetable == 0)
+  {
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  char *pa = kalloc(); // 分配物理地址
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK((int) (p - proc));
+  uvmmap(p->kernelPagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);// 对于每个进程的内核栈 要实现隔离
+  p->kstack = va;
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -149,6 +165,11 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+
+  uvmunmap(p->kernelPagetable,p->kstack,1,1);
+  p->kstack = 0;
+  proc_kernelptlFree(p->kernelPagetable);
+  p->kernelPagetable = 0;
   p->state = UNUSED;
 }
 
@@ -220,7 +241,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
-
+  // u2kvmcopy(p->pagetable,p->kernelPagetable,0,p->sz);
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -243,9 +264,12 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    if(PGROUNDUP(sz + n) >= PLIC)
+      return -1;
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    u2kvmcopy(p->pagetable,p->kernelPagetable,sz-n,sz);
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
@@ -274,6 +298,8 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
+
+  u2kvmcopy(np->pagetable,np->kernelPagetable,0,np->sz);
 
   np->parent = p;
 
@@ -473,16 +499,18 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        proc_hartinit(p->kernelPagetable);
         swtch(&c->context, &p->context);
+        kvminithart();
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
-
         found = 1;
       }
       release(&p->lock);
     }
+
 #if !defined (LAB_FS)
     if(found == 0) {
       intr_on();
@@ -501,6 +529,7 @@ scheduler(void)
 // be proc->intena and proc->noff, but that would
 // break in the few places where a lock is held but
 // there's no process.
+
 void
 sched(void)
 {
@@ -696,4 +725,23 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+void
+proc_kernelptlFree(pagetable_t pagetable)
+{
+  for(int i =0;i<512;i++)
+  {
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V)
+    {
+      pagetable[i] =0;
+      if((pte & (PTE_X | PTE_W | PTE_R)) == 0)
+      {
+        uint64 child = PTE2PA(pte);
+        proc_kernelptlFree((pagetable_t) child);
+      }
+    }
+  }
+  kfree((void*) pagetable);
 }

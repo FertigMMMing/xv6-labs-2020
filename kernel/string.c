@@ -35,7 +35,7 @@ memmove(void *dst, const void *src, uint n)
 
   s = src;
   d = dst;
-  if(s < d && s + n > d){
+  if(s < d && s + n > d){ // 说明当前的目标地址在原地址的目标范围内，那么需要从后向前进行地址复制
     s += n;
     d += n;
     while(n-- > 0)
