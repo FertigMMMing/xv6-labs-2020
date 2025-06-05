@@ -132,7 +132,7 @@ main(int argc, char *argv[])
   } tests[] = {
     { sparse_memory, "lazy alloc"},
     { sparse_memory_unmap, "lazy unmap"},
-    { oom, "out of memory"},
+    { oom, "out of memory11"},
     { 0, 0},
   };
     

@@ -64,6 +64,7 @@ argint(int n, int *ip)
 // Retrieve an argument as a pointer.
 // Doesn't check for legality, since
 // copyin/copyout will do that.
+// 处理这种情形：进程从sbrk()向系统调用（如read或write）传递有效地址，但尚未分配该地址的内存。
 int
 argaddr(int n, uint64 *ip)
 {
