@@ -5,7 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-
+#include "spinlock.h"
+#include "proc.h"
 /*
  * the kernel's page table.
  */
@@ -311,7 +312,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -319,14 +320,27 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+
+    if(*pte & PTE_W)
+      *pte = (*pte & ~PTE_W) | PTE_COW; // 完成对于页表项的权限设置
+
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    // if(flags & PTE_W)
+    // {
+    //   flags = (flags | PTE_COW) & ~PTE_W;
+    //   *pte = PA2PTE(pa) | flags;
+    // }
+
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){ // 将子进程的页表映射到相同的物理地址
+      // kfree(mem);
       goto err;
     }
+
+    krefpage((void*)pa); // 实现将当前物理地址的引用加一，在引用为0的时候，kfree；
   }
   return 0;
 
@@ -357,6 +371,9 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   uint64 n, va0, pa0;
 
   while(len > 0){
+
+    if(_isCow(dstva))
+      _allcateCow(dstva);  // 判断用户进程的页表的dstva的地址是否是cow
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
@@ -382,6 +399,7 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
   uint64 n, va0, pa0;
 
   while(len > 0){
+    
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
@@ -439,4 +457,63 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+// 判断是否满足写时复制的条件
+int 
+_isCow(uint64 va)
+{
+  struct proc *p = myproc();
+  pte_t* pte;
+  return va < p->sz
+  && ((pte = walk(p->pagetable,va,0))!= 0)
+ //  && (PGROUNDDOWN(va) != PGROUNDDOWN(r_sp()))
+  && ((*pte & PTE_V))
+  && ((*pte & PTE_COW));
+}
+//   int _isCow(uint64 addr) {
+//   pte_t *pte = walk(myproc()->pagetable, addr, 0);
+//   if (pte == 0) {
+//     printf("_isCow: walk failed for addr %p\n", addr);
+//     return 0;
+//   }
+//   if ((*pte & PTE_COW) != 0) {
+//     printf("_isCow: addr %p is COW\n", addr);
+//     return 1;
+//   }
+//   return 0;
+// }
+
+
+// 实现写时复制的逻辑
+int _allcateCow(uint64 va)
+{
+  pte_t* pte;
+  struct proc* p = myproc();
+
+  if((pte = walk(p->pagetable,va,0)) == 0)
+    panic("_allocateCow :walk");
+
+  uint64 pa = PTE2PA(*pte);
+  uint64 mem = (uint64)_kcopy_def((void*)pa); // 通过判定当前物理地址的引用数字,如果当前的物理地址的引用只有1，那么
+  
+  if(mem == 0)
+    return -1; // 分配报错
+
+  // if((uint64)mem == (uint64)pa)
+  // {
+  //   *pte |= PTE_W;
+  //   *pte &= ~PTE_COW;
+  //   return 0;
+  // }
+    
+  // memmove((char*)mem,(char*)pa,PGSIZE);
+  uint64 flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
+  uvmunmap(p->pagetable,PGROUNDDOWN(va),1,0); // 清除旧映射
+  if(mappages(p->pagetable,va,1,mem,flags) == -1)
+  {
+    panic("alloc Cow");
+  }
+
+  return 0;
 }
