@@ -54,7 +54,7 @@ void put(int key, int value)
   } else {
     // the new is new.
     pthread_mutex_lock(&lock[i]);
-    insert(key, value, &table[i], table[i]);
+    insert(key, value, &table[i], table[i]); // 实现的是头插法
     pthread_mutex_unlock(&lock[i]);
   }
  
